@@ -1,0 +1,124 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { Readable } from 'node:stream';
+
+test('صلاحيات الأدوار واستلام التذكرة والعزل واللغة', async () => {
+  const temp = mkdtempSync(path.join(tmpdir(), 'atal-desk-'));
+  process.env.DATA_DIR = temp;
+  delete process.env.DEMO_MODE;
+  const { server, db } = await import('../server.mjs');
+  async function request(url, method = 'GET', body, cookie, extra = {}) {
+    return await new Promise((resolve, reject) => {
+      const req = Readable.from(body ? [Buffer.from(JSON.stringify(body))] : []);
+      req.url = url; req.method = method; req.socket = { remoteAddress: extra.ip || 'desk-client' };
+      req.headers = { host: 'localhost', ...(extra.headers || {}), ...(body ? { 'content-type': 'application/json' } : {}), ...(cookie ? { cookie } : {}) };
+      const headers = {};
+      const res = { headersSent: false, statusCode: 200, setHeader(key, value) { headers[key.toLowerCase()] = value; }, writeHead(status, extraHeaders) { this.statusCode = status; Object.entries(extraHeaders || {}).forEach(([key, value]) => this.setHeader(key, value)); this.headersSent = true; }, end(data) { try { resolve({ status: this.statusCode, json: JSON.parse(data || '{}'), cookie: headers['set-cookie']?.split(';')[0] }); } catch (error) { reject(error); } } };
+      server.emit('request', req, res);
+    });
+  }
+  try {
+    const admin = await request('/api/setup', 'POST', { name: 'مسؤول', email: 'admin@example.test', password: 'strong-local-test', department: 'الدعم', role: 'employee' });
+    assert.equal((await request('/api/session', 'GET', null, admin.cookie)).json.user.role, 'admin');
+    async function addUser(fields) {
+      const created = await request('/api/users', 'POST', fields, admin.cookie);
+      assert.equal(created.status, 201);
+      return request('/api/activate', 'POST', { token: new URL(created.json.invitePath, 'http://127.0.0.1').searchParams.get('invite'), password: 'strong-local-test' });
+    }
+    const employee = await addUser({ name: 'موظف', email: 'employee@example.test', department: 'المبيعات', role: 'employee' });
+    const other = await addUser({ name: 'آخر', email: 'other@example.test', department: 'المالية', role: 'employee' });
+    assert.equal((await request('/api/register', 'POST', { name: 'عام', email: 'open@example.test', password: 'strong-local-test', department: 'عام' })).status, 403);
+    assert.equal((await request('/api/users', 'POST', { name: 'فني', email: 'tech@example.test', department: 'الدعم', role: 'technician' }, employee.cookie)).status, 403);
+    const tech = await addUser({ name: 'فني', email: 'tech@example.test', department: 'الدعم', role: 'technician' });
+    const tech2 = await addUser({ name: 'فني ثان', email: 'tech2@example.test', department: 'الدعم', role: 'technician' });
+    assert.equal((await request('/api/dashboard', 'GET', null, employee.cookie)).status, 403);
+    assert.equal((await request('/api/dashboard', 'GET', null, tech.cookie)).status, 403);
+    const created = await request('/api/tickets', 'POST', { title: 'بريد الموظف', summary: 'لا يرسل', category: 'email', impact: 'one', blocked: false, tried_steps: 'جربت الويب' }, employee.cookie);
+    const hidden = await request('/api/tickets', 'POST', { title: 'طابعة الآخر', summary: 'لا تطبع', category: 'hardware', impact: 'team', blocked: true }, other.cookie);
+    assert.equal((await request('/api/tickets', 'GET', null, employee.cookie)).json.length, 1);
+    assert.equal((await request(`/api/tickets/${hidden.json.id}`, 'GET', null, employee.cookie)).status, 403);
+    assert.equal((await request('/api/conversations', 'GET', null, tech.cookie)).json.length, 0);
+    const queue = await request('/api/tickets', 'GET', null, tech.cookie);
+    assert.equal(queue.json.length, 2);
+    assert.equal((await request(`/api/tickets/${created.json.id}`, 'PATCH', { status: 'in_progress' }, tech.cookie)).status, 403);
+    const accepted = await request(`/api/tickets/${created.json.id}/accept`, 'POST', {}, tech.cookie);
+    assert.equal(accepted.status, 200);
+    assert.equal(accepted.json.status, 'accepted');
+    assert.equal(accepted.json.events.at(-1).to_status, 'accepted');
+    assert.equal(accepted.json.assignee_name, 'فني');
+    assert.equal((await request(`/api/tickets/${created.json.id}/accept`, 'POST', {}, tech2.cookie)).status, 409);
+    const seen = await request(`/api/tickets/${created.json.id}`, 'GET', null, employee.cookie);
+    assert.equal(seen.json.assignee_name, 'فني');
+    assert.equal(seen.json.status, 'accepted');
+    const reply = await request(`/api/tickets/${created.json.id}/replies`, 'POST', { body: 'استلمت الطلب وسأراجع الصادر.' }, tech.cookie);
+    assert.equal(reply.status, 201);
+    assert.equal(reply.json.status, 'accepted');
+    const reloaded = await request(`/api/tickets/${created.json.id}`, 'GET', null, employee.cookie);
+    assert.equal(reloaded.json.replies.at(-1).body, 'استلمت الطلب وسأراجع الصادر.');
+    assert.equal(reloaded.json.status, 'accepted');
+    assert.equal((await request(`/api/tickets/${created.json.id}`, 'PATCH', { status: 'waiting' }, tech2.cookie)).status, 403);
+    assert.equal((await request(`/api/tickets/${created.json.id}`, 'PATCH', { status: 'waiting' }, tech.cookie)).status, 400);
+    assert.equal((await request(`/api/tickets/${created.json.id}`, 'PATCH', { status: 'in_progress' }, tech.cookie)).json.status, 'in_progress');
+    assert.equal((await request(`/api/tickets/${created.json.id}`, 'PATCH', { status: 'closed', closeReason: 'ليس من صلاحية الفني' }, tech.cookie)).status, 403);
+    const asked = await request(`/api/tickets/${created.json.id}`, 'PATCH', { status: 'waiting', request: 'أرسل نص الخطأ ووقت ظهوره.' }, tech.cookie);
+    assert.equal(asked.status, 200);
+    assert.equal(asked.json.status, 'waiting');
+    assert.equal(asked.json.replies.some(item => item.body.includes('نص الخطأ')), true);
+    assert.equal((await request(`/api/tickets/${created.json.id}`, 'PATCH', { status: 'resolved' }, tech.cookie)).status, 400);
+    assert.equal((await request(`/api/tickets/${created.json.id}`, 'GET', null, employee.cookie)).json.status, 'waiting');
+    assert.equal((await request(`/api/tickets/${created.json.id}`, 'PATCH', { status: 'resolved', solution: 'أُعيد إرسال المرفق من بريد الويب المعتمد.' }, tech.cookie)).status, 200);
+    const solved = await request(`/api/tickets/${created.json.id}`, 'GET', null, employee.cookie);
+    assert.equal(solved.json.solution.includes('بريد الويب'), true);
+    assert.equal((await request(`/api/tickets/${created.json.id}`, 'PATCH', { action: 'reopen' }, employee.cookie)).status, 200);
+    const reopened = await request(`/api/tickets/${created.json.id}`, 'GET', null, employee.cookie);
+    assert.equal(reopened.json.status, 'in_progress');
+    assert.equal(reopened.json.replies.some(item => item.body.includes('الصادر')), true);
+    assert.equal((await request(`/api/tickets/${hidden.json.id}`, 'PATCH', { status: 'closed' }, admin.cookie)).status, 400);
+    const adminClosed = await request(`/api/tickets/${hidden.json.id}`, 'PATCH', { status: 'closed', closeReason: 'الجهاز خارج نطاق الدعم الداخلي.' }, admin.cookie);
+    assert.equal(adminClosed.status, 200);
+    assert.equal(adminClosed.json.status, 'closed');
+    assert.equal(adminClosed.json.close_reason, 'الجهاز خارج نطاق الدعم الداخلي.');
+    assert.equal(adminClosed.json.events.some(item => item.action === 'confirmed'), false);
+    assert.equal(adminClosed.json.events.some(item => item.action === 'adminClosed'), true);
+    const follow = await request('/api/tickets', 'POST', { title: 'متابعة', summary: 'بعد الحل', category: 'software', impact: 'one', blocked: false }, employee.cookie);
+    await request(`/api/tickets/${follow.json.id}/accept`, 'POST', {}, tech.cookie);
+    await request(`/api/tickets/${follow.json.id}`, 'PATCH', { status: 'resolved', solution: 'أُعيد تشغيل البرنامج المعتمد.' }, tech.cookie);
+    assert.equal((await request(`/api/tickets/${follow.json.id}`, 'PATCH', { action: 'confirm' }, employee.cookie)).status, 200);
+    const confirmed = await request(`/api/tickets/${follow.json.id}`, 'GET', null, employee.cookie);
+    assert.equal(confirmed.json.status, 'closed');
+    assert.equal(confirmed.json.close_reason, '');
+    assert.equal(confirmed.json.events.some(item => item.action === 'confirmed'), true);
+    assert.equal(confirmed.json.events.some(item => item.action === 'adminClosed'), false);
+    assert.equal((await request(`/api/tickets/${follow.json.id}`, 'PATCH', { action: 'reopen' }, employee.cookie)).status, 200);
+    const openedAgain = await request(`/api/tickets/${follow.json.id}`, 'GET', null, employee.cookie);
+    assert.equal(openedAgain.json.status, 'in_progress');
+    assert.equal(openedAgain.json.solution.includes('البرنامج'), true);
+    const employeeId = (await request('/api/session', 'GET', null, employee.cookie)).json.user.id;
+    const legacyId = Number(db.prepare('INSERT INTO tickets(user_id,title,summary,category,priority,status,created,updated,solution) VALUES(?,?,?,?,?,?,?,?,?)').run(employeeId, 'تذكرة قديمة', 'قبل الترقية', 'other', 'low', 'in_progress', new Date().toISOString(), new Date().toISOString(), 'حل قديم').lastInsertRowid);
+    db.prepare('INSERT INTO ticket_replies(ticket_id,user_id,body,created) VALUES(?,?,?,?)').run(legacyId, employeeId, 'رد قديم', new Date().toISOString());
+    const legacy = await request(`/api/tickets/${legacyId}`, 'GET', null, employee.cookie);
+    assert.equal(legacy.json.status, 'in_progress');
+    assert.equal(legacy.json.solution, 'حل قديم');
+    assert.equal(legacy.json.replies[0].body, 'رد قديم');
+    assert.equal(db.prepare('PRAGMA table_info(tickets)').all().some(column => column.name === 'close_reason'), true);
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = async () => { throw new Error('offline'); };
+      const direct = await request('/api/tickets', 'POST', { title: 'تذكرة مباشرة', summary: 'النموذج متوقف', category: 'other', impact: 'one', blocked: false }, employee.cookie);
+      assert.equal(direct.status, 201);
+      assert.equal((await request('/api/chat', 'POST', { message: 'برنامج العمل الداخلي لا يعمل' }, employee.cookie)).status, 503);
+      const calls = [];
+      globalThis.fetch = async (_url, options) => { calls.push(JSON.parse(options.body)); return { ok: true, json: async () => ({ message: { content: JSON.stringify({ reply: 'Check whether sending fails for every message or one message.', needs_support: false, sources: [db.prepare("SELECT id FROM articles WHERE title='إرسال البريد والمرفقات'").get().id] }) } }) }; };
+      const english = await request('/api/chat', 'POST', { message: 'Outlook will not send attachments', lang: 'en' }, employee.cookie, { headers: { 'x-atal-lang': 'en' } });
+      assert.equal(english.status, 200);
+      assert.equal(calls.length,0);assert.equal(english.json.analysis.origin,'knowledge_workflow');
+      assert.equal(english.json.analysis.category, 'email');
+      assert.match(english.json.analysis.explanation, /short|attachment|message/i);
+      assert.equal(english.json.analysis.questions.length, 0);
+    } finally { globalThis.fetch = originalFetch; }
+    assert.equal((await request('/api/demo-login', 'POST', { role: 'employee' })).status, 404);
+  } finally { db.close(); rmSync(temp, { recursive: true, force: true }); }
+});

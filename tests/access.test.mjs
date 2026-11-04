@@ -1,0 +1,93 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { Readable } from 'node:stream';
+import { createHash, randomBytes, scryptSync } from 'node:crypto';
+import { DatabaseSync } from 'node:sqlite';
+
+test('الدعوة مرة واحدة والتسجيل مغلق والعرض معزول', async () => {
+  const temp = mkdtempSync(path.join(tmpdir(), 'atal-access-'));
+  const salt = randomBytes(16).toString('hex');
+  const password = scryptSync('strong-local-test', salt, 64).toString('hex');
+  const legacy = new DatabaseSync(path.join(temp, 'atal.db'));
+  legacy.exec('CREATE TABLE users(id INTEGER PRIMARY KEY,name TEXT NOT NULL,email TEXT UNIQUE NOT NULL,password TEXT NOT NULL,salt TEXT NOT NULL,role TEXT NOT NULL,department TEXT NOT NULL)');
+  legacy.prepare('INSERT INTO users(name,email,password,salt,role,department) VALUES(?,?,?,?,?,?)').run('مسؤول حالي', 'kept@example.test', password, salt, 'admin', 'الإدارة');
+  legacy.close();
+  process.env.DATA_DIR = temp;
+  delete process.env.DEMO_MODE;
+  const { server, db } = await import('../server.mjs');
+  let n = 0;
+  async function request(url, method = 'GET', body, cookie) {
+    n += 1;
+    return await new Promise((resolve, reject) => {
+      const req = Readable.from(body ? [Buffer.from(JSON.stringify(body))] : []);
+      req.url = url; req.method = method; req.socket = { remoteAddress: `access-${n}` };
+      req.headers = { host: 'localhost', ...(body ? { 'content-type': 'application/json' } : {}), ...(cookie ? { cookie } : {}) };
+      const headers = {};
+      const res = { headersSent: false, statusCode: 200, setHeader(key, value) { headers[key.toLowerCase()] = value; }, writeHead(status, extra) { this.statusCode = status; Object.entries(extra || {}).forEach(([key, value]) => this.setHeader(key, value)); this.headersSent = true; }, end(data) { try { resolve({ status: this.statusCode, json: JSON.parse(data || '{}'), cookie: headers['set-cookie']?.split(';')[0] }); } catch (error) { reject(error); } } };
+      server.emit('request', req, res);
+    });
+  }
+  try {
+    assert.equal(db.prepare('SELECT status FROM users WHERE email=?').get('kept@example.test').status, 'active');
+    const kept = await request('/api/login', 'POST', { email: 'kept@example.test', password: 'strong-local-test', role: 'employee' });
+    assert.equal(kept.status, 200);
+    assert.equal((await request('/api/session', 'GET', null, kept.cookie)).json.user.role, 'admin');
+    assert.equal((await request('/api/register', 'POST', { name: 'عام', email: 'open@example.test', password: 'strong-local-test', department: 'عام' })).status, 403);
+    assert.equal(db.prepare('SELECT id FROM users WHERE email=?').get('open@example.test'), undefined);
+    assert.equal((await request('/api/demo-login', 'POST', { role: 'employee' })).status, 404);
+    const created = await request('/api/users', 'POST', { name: 'موظف', email: 'person@example.test', department: 'المبيعات', role: 'employee', password: 'AdminChosen123' }, kept.cookie);
+    assert.equal(created.status, 201);
+    assert.equal(created.json.emailSent, false);
+    assert.equal(created.json.delivery, 'manual');
+    assert.equal('password' in created.json, false);
+    const token = new URL(created.json.invitePath, 'http://127.0.0.1').searchParams.get('invite');
+    const stored = db.prepare('SELECT token_hash FROM invitations WHERE user_id=?').get(created.json.id);
+    assert.equal(stored.token_hash, createHash('sha256').update(token).digest('hex'));
+    assert.notEqual(stored.token_hash, token);
+    assert.equal(db.prepare('SELECT password FROM users WHERE id=?').get(created.json.id).password, '');
+    const list = await request('/api/users', 'GET', null, kept.cookie);
+    assert.equal(JSON.stringify(list.json).includes(token), false);
+    assert.equal(JSON.stringify(list.json).includes('AdminChosen123'), false);
+    assert.equal(list.json.find(account => account.email === 'person@example.test').status, 'invited');
+    db.prepare('UPDATE invitations SET expires=? WHERE token_hash=?').run(Date.now() - 1000, stored.token_hash);
+    assert.equal((await request('/api/activate', 'POST', { token, password: 'strong-local-test' })).status, 410);
+    assert.equal(db.prepare('SELECT status,password FROM users WHERE id=?').get(created.json.id).password, '');
+    const renewed = await request(`/api/users/${created.json.id}/invite`, 'POST', {}, kept.cookie);
+    assert.equal((await request('/api/activate', 'POST', { token, password: 'strong-local-test' })).status, 410);
+    const next = new URL(renewed.json.invitePath, 'http://127.0.0.1').searchParams.get('invite');
+    assert.notEqual(next, token);
+    assert.equal((await request('/api/activate', 'POST', { token: next, password: 'strong-local-test', role: 'admin' })).status, 400);
+    assert.equal(db.prepare('SELECT role,status FROM users WHERE id=?').get(created.json.id).status, 'invited');
+    const person = await request('/api/activate', 'POST', { token: next, password: 'strong-local-test' });
+    assert.equal(person.status, 200);
+    assert.equal((await request('/api/session', 'GET', null, person.cookie)).json.user.role, 'employee');
+    assert.equal((await request('/api/activate', 'POST', { token: next, password: 'another-password' })).status, 410);
+    assert.equal((await request('/api/users', 'GET', null, person.cookie)).status, 403);
+    assert.equal((await request('/api/login', 'POST', { email: 'person@example.test', password: 'strong-local-test', role: 'admin' })).json ? true : false, true);
+    const signed = await request('/api/login', 'POST', { email: 'person@example.test', password: 'strong-local-test', role: 'admin' });
+    assert.equal((await request('/api/session', 'GET', null, signed.cookie)).json.user.role, 'employee');
+    assert.equal((await request(`/api/users/${created.json.id}`, 'PATCH', { role: 'admin', status: 'disabled' }, kept.cookie)).status, 400);
+    assert.equal(db.prepare('SELECT role,status FROM users WHERE id=?').get(created.json.id).role, 'employee');
+    assert.equal((await request('/api/tickets', 'POST', { title: 'طلب', summary: 'وصف', category: 'other', impact: 'one', blocked: false }, person.cookie)).status, 201);
+    assert.equal((await request(`/api/users/${created.json.id}`, 'PATCH', { status: 'disabled' }, kept.cookie)).status, 200);
+    assert.equal((await request('/api/tickets', 'GET', null, person.cookie)).status, 401);
+    assert.equal((await request('/api/tickets', 'GET', null, signed.cookie)).status, 401);
+    assert.equal(db.prepare('SELECT COUNT(*) AS c FROM tickets').get().c, 1);
+    assert.equal((await request('/api/login', 'POST', { email: 'person@example.test', password: 'strong-local-test' })).status, 403);
+    const keptId = db.prepare("SELECT id FROM users WHERE email='kept@example.test'").get().id;
+    assert.equal((await request(`/api/users/${keptId}`, 'PATCH', { status: 'disabled' }, kept.cookie)).status, 400);
+    assert.equal(db.prepare('SELECT status FROM users WHERE id=?').get(keptId).status, 'active');
+    process.env.DEMO_MODE = '1';
+    assert.equal((await request('/api/register', 'POST', { name: 'عام', email: 'demo-open@example.test', password: 'strong-local-test', department: 'عام' })).status, 403);
+    assert.notEqual((await request('/api/demo-login', 'POST', { role: 'employee' })).status, 404);
+    delete process.env.DEMO_MODE;
+    assert.equal((await request('/api/demo-login', 'POST', { role: 'employee' })).status, 404);
+  } finally {
+    delete process.env.DEMO_MODE;
+    db.close();
+    rmSync(temp, { recursive: true, force: true });
+  }
+});

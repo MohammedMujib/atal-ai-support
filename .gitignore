@@ -1,0 +1,44 @@
+# Local databases, sessions, tickets, and invitations
+data/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# Secrets. .env.example is documentation only; the app does not load it.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+
+# Dependencies and caches
+node_modules/
+
+# Logs, temporary files, backups, and archives
+*.log
+tmp/
+temp/
+*.zip
+*.7z
+*.bak
+*.backup
+*~
+
+# Test output
+output/
+coverage/
+.nyc_output/
+
+# Large local model files
+*.gguf
+*.ggml
+*.safetensors
+ollama/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini

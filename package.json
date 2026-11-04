@@ -1,0 +1,21 @@
+{
+  "name": "atal-ai-support",
+  "version": "1.0.0",
+  "private": true,
+  "description": "عُطْل. — AI-powered workplace IT support with a RAG-based assistant and helpdesk ticket management.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MohammedMujib/atal-ai-support.git"
+  },
+  "type": "module",
+  "scripts": {
+    "start": "node start-local.mjs",
+    "demo": "node demo-server.mjs",
+    "demo:reset": "node demo-reset.mjs",
+    "test": "node --test --test-isolation=process tests/*.test.mjs",
+    "check": "node --check server.mjs && node --check conversation-engine.mjs && node --check case-state.mjs && node --check core-guides.mjs && node --check chat.mjs && node --check scope.mjs && node --check start-local.mjs && node --check knowledge.mjs && node --check knowledge-extra.mjs && node --check knowledge-en.mjs && node --check demo-data.mjs && node --check demo-server.mjs && node --check demo-reset.mjs && node --check public/i18n.js && node --check public/app.js && node --check reviewed-guides.mjs && node --check dialect.mjs && node --check workplace-guides.mjs"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

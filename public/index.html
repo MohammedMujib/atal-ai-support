@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#F6F3EA">
+<title>عُطْل — دعمك التقني، خطوة بخطوة</title>
+<script>
+try {
+  var lang = localStorage.getItem('atal-lang');
+  if (lang === 'en') {
+    document.documentElement.lang = 'en';
+    document.documentElement.dir = 'ltr';
+    document.title = 'عُطْل — technical support, one step at a time';
+  }
+  var choice = localStorage.getItem('atal-theme') || 'system';
+  if (choice !== 'light' && choice !== 'dark') choice = 'system';
+  var dark = choice === 'dark' || (choice === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  document.documentElement.dataset.themeChoice = choice;
+  var meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', dark ? '#101816' : '#F6F3EA');
+} catch (e) {}
+</script>
+<link rel="stylesheet" href="/style.css">
+<script type="module" src="/app.js"></script>
+</head>
+<body>
+<div id="app"></div>
+<div id="toast" role="status" aria-live="polite"></div>
+<dialog id="dialog"></dialog>
+</body>
+</html>

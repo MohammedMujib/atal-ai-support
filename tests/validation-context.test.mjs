@@ -1,0 +1,6 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {validateReply} from '../chat.mjs';
+const ctx={message:'ملف Excel مقفل باسم زميلي',history:[],caseState:{topic:'excel_lock',facts:{}}};
+test('وصف قفل باسم الزميل ليس طلبا لاسمه',()=>{assert.ok(validateReply({reply:'بما أن الملف مقفل باسم زميلك، اطلب منه إغلاق نسخته ثم أعد الفتح.',category:'software',intent:'guide',sources:[1]},[1],ctx));assert.throws(()=>validateReply({reply:'هل يمكنك ذكر اسم زميلك الذي قفل الملف؟',category:'software',intent:'clarify',sources:[]},[],ctx));});
+test('مصدر Microsoft لا يبرر توجيه حساب داخلي إلى بوابتها',()=>assert.throws(()=>validateReply({reply:'استخدم https://passwordreset.microsoftonline.com لاستعادة حساب النظام الداخلي.',category:'access',intent:'guide',sources:[1]},[1],{...ctx,caseState:{topic:'access',facts:{provider:'internal'}}})));
+
+test('يرفض قلب تحذير المصدر إلى إنهاء عمل الزميل بالقوة',()=>{assert.throws(()=>validateReply({reply:'إذا استمرت المشكلة، اطلب منه إنهاء عمله بالقوة.',category:'software',intent:'guide',sources:[1]},[1],ctx));assert.ok(validateReply({reply:'اطلب منه حفظ عمله وإغلاق الملف. لا تنه عمله بالقوة.',category:'software',intent:'guide',sources:[1]},[1],ctx));});
