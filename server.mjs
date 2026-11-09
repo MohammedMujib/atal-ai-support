@@ -9,6 +9,7 @@ import {answerEmployee,installCoreGuides} from './conversation-engine.mjs';
 import {redactSecrets} from './chat.mjs';
 import {normalizeDialect} from './dialect.mjs';
 import {installReviewedGuides} from './reviewed-guides.mjs';
+import {completeChat, modelStatus} from './llm.mjs';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const dir = process.env.DATA_DIR || path.join(root, 'data');
@@ -255,22 +256,6 @@ export function normalizeModelReply(raw, articleIds, articles = []) {
   return { category, explanation: text, questions: [], steps: [], requires_it: needs, title: text.slice(0, 80), summary: text.slice(0, 500), sources: covered };
 }
 export function getPriority(impact, blocked) { if (!['one', 'team', 'company'].includes(impact) || typeof blocked !== 'boolean') fail('impact'); return impact === 'company' && blocked ? 'urgent' : blocked || impact === 'company' ? 'high' : impact === 'team' ? 'medium' : 'low'; }
-async function modelStatus() {
-  const model = process.env.OLLAMA_MODEL || 'llama3.1:8b';
-  const base = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
-  try {
-    const response = await fetch(`${base}/api/tags`, { signal: AbortSignal.timeout(2500) });
-    if (!response.ok) throw Error();
-    const payload = await response.json();
-    const models = (payload.models || []).map(item => item.name);
-    let loaded = false;
-    try {
-      const running = await fetch(`${base}/api/ps`, { signal: AbortSignal.timeout(2500) });
-      if (running.ok) { const body = await running.json(); loaded = (body.models || []).some(item => item.name === model || item.model === model); }
-    } catch { /* loaded state is optional */ }
-    return { connected: true, ready: models.includes(model), loaded, model, models };
-  } catch { return { connected: false, ready: false, loaded: false, model }; }
-}
 function guideFor(language, articles) {
   return articles.map(article => {
     const english = language === 'en' && article.body_en;
@@ -335,21 +320,12 @@ function repairNote(language, kind) {
 }
 async function askModel(messages, articleIds, signal) {
   const started = Date.now();
-  let response;
   try {
-    response = await fetch(`${process.env.OLLAMA_URL || 'http://127.0.0.1:11434'}/api/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal, body: JSON.stringify({ model: process.env.OLLAMA_MODEL || 'llama3.1:8b', stream: false, format: chatSchema(articleIds), messages, options: { temperature: 0.2, num_ctx: 2048, num_predict: 420 } }) });
+    const completion = await completeChat(messages, { temperature: 0.2, maxTokens: 420, signal, schema: chatSchema(articleIds) });
+    return { content: completion.content, stats: { modelMs: Date.now() - started, ...completion.stats } };
   } catch (error) {
-    const kind = error.name === 'TimeoutError' || error.name === 'AbortError' ? 'timeout' : 'connection';
-    throw Object.assign(error, { status: 503, code: 'assistantUnavailable', kind, modelMs: Date.now() - started });
+    throw Object.assign(error, { status: error.status || 503, code: 'assistantUnavailable', modelMs: Date.now() - started });
   }
-  const modelMs = Date.now() - started;
-  if (!response.ok) {
-    const kind = response.status === 404 ? 'model_missing' : response.status === 401 || response.status === 403 ? 'permission' : 'http';
-    throw Object.assign(new Error(kind), { status: response.status === 404 ? 503 : 502, code: 'assistantUnavailable', kind, modelMs });
-  }
-  const payload = await response.json();
-  const ms = value => Number.isFinite(value) ? Math.round(value / 1e6) : null;
-  return { content: payload.message?.content || '', stats: { modelMs, loadMs: ms(payload.load_duration), promptMs: ms(payload.prompt_eval_duration), evalMs: ms(payload.eval_duration), doneReason: typeof payload.done_reason === 'string' ? payload.done_reason.slice(0, 40) : '' } };
 }
 function isQuestion(text) {
   const value = String(text || '').trim();

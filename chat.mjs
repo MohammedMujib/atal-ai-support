@@ -1,6 +1,7 @@
 // Conversation text is separate from ticket metadata. No generated company facts.
 import {normalize} from './knowledge.mjs';
 import {normalizeDialect} from './dialect.mjs';
+import {completeChat} from './llm.mjs';
 import {routeRequest,isOutsideTopic,scopeRefusal,isExplanationFollowup,isInstructionFollowup,activeTechnicalContext} from './scope.mjs';
 
 export const replySchema = {
@@ -186,15 +187,12 @@ export async function generateReply(message,history,articles,{signal,skipRouting
   if(caseState)messages.splice(messages.length-1,0,{role:'system',content:'CURRENT CASE STATE (employee statements are facts; proposals do not prove execution): '+JSON.stringify(caseState)+'\nDo not re-ask a known field or repeat an attempted failed action. Reply in '+(language==='en'?'English':'Arabic')+'. If this is a short answer, use the awaiting question to interpret it. Unknown facts must not be invented.'});
   const requestSignal=AbortSignal.any([AbortSignal.timeout(170000),...(signal?[signal]:[])]);
   for(let attempt=0;attempt<2;attempt++){
-    const response=await fetch((process.env.OLLAMA_URL||'http://127.0.0.1:11434')+'/api/chat',{
-      method:'POST',headers:{'Content-Type':'application/json'},signal:requestSignal,
-      body:JSON.stringify({model:process.env.OLLAMA_MODEL||'llama3.1:8b',...(/^qwen3(?::|$)/iu.test(process.env.OLLAMA_MODEL||'')?{think:false}:{}),stream:false,format,messages,keep_alive:'15m',options:{temperature:0.15,num_ctx:8192,num_predict:700}})
-    });
-    if(!response.ok)throw Object.assign(Error('المساعد غير متاح مؤقتًا. يمكنك إعادة المحاولة أو إنشاء طلب دعم مباشر.'),{status:503});
-    const result=await response.json();
+    let result;
+    try{result=await completeChat(messages,{temperature:0.15,maxTokens:700,signal:requestSignal,schema:format});}
+    catch(error){if(error.name==='AbortError')throw error;throw Object.assign(Error('المساعد غير متاح مؤقتًا. يمكنك إعادة المحاولة أو إنشاء طلب دعم مباشر.'),{status:error.status||503,kind:error.kind,code:'assistantUnavailable'});}
     try{
-      if(result.done_reason==='length')throw Error('truncated');
-      let parsed=JSON.parse(result.message.content);
+      if(result.doneReason==='length')throw Error('truncated');
+      let parsed=JSON.parse(result.content);
       if(typeof parsed.reply==='string'&&typeof parsed.needs_support==='boolean'&&!parsed.intent)parsed={reply:parsed.reply,intent:parsed.needs_support?'handover':/[؟?]\s*$/u.test(parsed.reply)?'clarify':'guide',category:articles[0]?.category||'other',sources:parsed.sources};
       const reply=validateReply(parsed,articles.map(a=>a.id),{message,history,caseState});
       const categories=[...new Set(articles.filter(a=>reply.sources.includes(a.id)).map(a=>a.category))];
@@ -202,7 +200,7 @@ export async function generateReply(message,history,articles,{signal,skipRouting
       else if(categories.length===1)reply.category=categories[0];
       return {...reply,scope:'work_it',origin:'llama'};
     }catch(error){
-      if(process.env.QA_MODE==='1')console.warn('Chat validation:',error.message,result.message?.content?.slice(0,1000));
+      if(process.env.QA_MODE==='1')console.warn('Chat validation:',error.message,result.content?.slice(0,1000));
       if(attempt===1)return {...knowledgeFallback(message,history,language==='en'?[]:articles,language),scope:'work_it'};
       messages.push({role:'system',content:'Repair the invalid reply ('+error.message+'). If the employee already provided the error, do not ask for it again. Never repeat a failed action. Give a DIFFERENT supported check with a valid source ID. If no supported action remains, offer a technician (intent handover, sources may be empty). Do not invent company teams, links or policies. Return the JSON contract.'});
     }

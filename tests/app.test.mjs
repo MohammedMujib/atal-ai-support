@@ -75,9 +75,8 @@ test('حفظ البيانات والصلاحيات والتحقق من رد ال
     let cid;
     try{
       // Contract test only: simulated model output, not evidence of a running Llama.
-      globalThis.fetch=async url=>String(url).endsWith('/api/ps')?{ok:true,json:async()=>({models:[]})}:{ok:true,json:async()=>({models:[{name:'llama3.1:8b'}]})};
       const seen=await request('/api/model','GET',null,admin.cookie);
-      assert.equal(seen.status,200);assert.equal(seen.json.ready,true);assert.equal(seen.json.loaded,false);
+      assert.equal(seen.status,200);assert.equal(seen.json.ready,Boolean(process.env.GROQ_API_KEY));assert.equal(seen.json.loaded,seen.json.ready);assert.equal(seen.json.connected,Boolean(process.env.GROQ_API_KEY||process.env.OPENROUTER_API_KEY));
       globalThis.fetch=async(url,options)=>{const body=JSON.parse(options.body);modelCalls.push(body);const tried=body.messages.some(item=>item.role==='user'&&/جرّبت/.test(item.content));return {ok:true,json:async()=>({message:{content:JSON.stringify({reply:tried?'راجع صندوق الصادر وسجّل نص الخطأ دون حذف الرسائل.':'تحقق هل الإرسال لا يعمل لكل الرسائل أم رسالة واحدة.',needs_support:false,sources:[mailSource]})},done_reason:'stop',load_duration:0,prompt_eval_duration:1e6,eval_duration:2e6})};};
       const chat=await request('/api/chat','POST',{message:'الإيميل مو راضي يرسل'},employee.cookie);
       assert.equal(chat.status,200);assert.equal(chat.json.analysis.category,'email');assert.equal(chat.json.diagnostic,undefined);

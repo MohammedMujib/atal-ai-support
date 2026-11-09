@@ -1,3 +1,8 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { loadEnv } from './load-env.mjs';
+
+loadEnv(path.dirname(fileURLToPath(import.meta.url)));
 process.env.PORT ||= '3002';
 process.env.HOST ||= '127.0.0.1';
 const {server}=await import('./server.mjs');

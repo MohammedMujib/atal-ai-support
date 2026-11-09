@@ -1,8 +1,8 @@
 # عُطْل.
 
-مساعد دعم تقني محلي لأعطال العمل. يجمع بين حوار موجّه، واسترجاع من دليل مكتوب، ونموذج Llama عبر Ollama، وإدارة تذاكر الدعم.
+مساعد دعم تقني لأعطال العمل. يجمع بين حوار موجّه، واسترجاع من دليل مكتوب، ونموذج عبر Groq مع احتياط OpenRouter، وإدارة تذاكر الدعم.
 
-A local workplace IT assistant. It combines a guided conversation, retrieval from a written guide, Llama through Ollama, and helpdesk ticket management.
+A workplace IT assistant. It combines a guided conversation, retrieval from a written guide, a model through Groq with an OpenRouter backup, and helpdesk ticket management.
 
 الاستماع الافتراضي على `127.0.0.1` فقط. رفع هذا المستودع إلى GitHub لا يشغّل التطبيق ولا يشغّل النموذج.
 
@@ -17,10 +17,10 @@ The default listener is `127.0.0.1` only. Publishing this repository does not st
 ### ماذا يفعل
 
 - **المساعد:** حوار بالعربية أو الإنجليزية عن أعطال تقنية مرتبطة بالعمل. لا يطلب كلمات المرور أو رموز التحقق، ولا ينفّذ إصلاحًا على الجهاز.
-- **الاسترجاع ثم التوليد:** يختار الدليل مقالات مرتبطة بالمنتج والسياق، ويرسل مقتطفات قصيرة إلى النموذج المحلي. هذا استرجاع نصي مع سياق المحادثة، وليس قاعدة متجهات. إذا لم يوجد مصدر مناسب لا يُختلق رابط أو إعداد.
+- **الاسترجاع ثم التوليد:** يختار الدليل مقالات مرتبطة بالمنتج والسياق، ويرسل مقتطفات قصيرة إلى النموذج. هذا استرجاع نصي مع سياق المحادثة، وليس قاعدة متجهات. إذا لم يوجد مصدر مناسب لا يُختلق رابط أو إعداد.
 - **مسارات مراجعة:** بعض الأعطال الشائعة، مثل الشبكة والبريد والدخول والطابعة وحالات موثّقة في Teams وExcel وOneDrive، تسير بخطوات مكتوبة ولا تنتظر النموذج.
 - **التذاكر:** الموظف ينشئ طلبًا، والفني يستلمه ويتابعه ويسجّل الحل، والموظف يؤكد أو يعيد الفتح.
-- **التشغيل المحلي:** Node.js وSQLite على الجهاز. لا مفتاح API ولا خدمة مدفوعة ولا إرسال بريد.
+- **التشغيل:** Node.js وSQLite على السيرفر. المساعد يتصل بـ Groq، ثم بـ OpenRouter إذا فشل الطلب. لا إرسال بريد.
 
 ### الصلاحيات
 
@@ -40,16 +40,16 @@ The default listener is `127.0.0.1` only. Publishing this repository does not st
 - لا اعتمادات npm، لذلك لا يلزم `npm install`.
 - واجهة HTML وCSS وJavaScript بلا إطار أمامي.
 - SQLite في ملف ينشأ عند أول تشغيل.
-- Ollama على `http://127.0.0.1:11434`، والنموذج الافتراضي `llama3.1:8b`.
+- Groq بالنموذج `openai/gpt-oss-120b`. إذا تعذر الطلب يُستخدم OpenRouter بالنموذج `meta-llama/llama-4-maverick`.
 
 ### التشغيل
 
-يلزم Node.js 24 أو أحدث، و[Ollama](https://ollama.com/) على جهاز يقدر على تشغيل النموذج. تنزيل النموذج يحتاج إنترنت ومساحة وذاكرة مناسبة، ويبقى على جهازك.
+يلزم Node.js 24 أو أحدث، وسيرفر يبقى شغالًا، ومفتاح Groq. مفتاح OpenRouter احتياط. المفاتيح توضع في `.env` ولا تُرفع إلى GitHub.
 
 ```powershell
 git clone https://github.com/MohammedMujib/atal-ai-support.git
 cd atal-ai-support
-ollama pull llama3.1:8b
+copy .env.example .env
 npm start
 ```
 
@@ -64,14 +64,14 @@ $env:PORT = "3003"
 npm start
 ```
 
-المتغيرات الاختيارية موثّقة في `.env.example`. التطبيق يقرأ بيئة العملية ولا يحمّل ملف `.env` بنفسه. الافتراضيات: المنفذ `3002`، العنوان `127.0.0.1`، وOllama والنموذج أعلاه.
+املأ `GROQ_API_KEY` في `.env` قبل التشغيل. `start-local.mjs` و`demo-server.mjs` يقرآن هذا الملف. الافتراضيات: المنفذ `3002` والعنوان `127.0.0.1`.
 
 ```powershell
 npm run check
 npm test
 ```
 
-الاختبارات تتحقق من الحوار والصلاحيات والاسترجاع وعقد الرد. نجاحها لا يعني أن Llama أجاب بشكل صحيح على كل سؤال.
+الاختبارات تتحقق من الحوار والصلاحيات والاسترجاع وعقد الرد. نجاحها لا يعني أن النموذج أجاب بشكل صحيح على كل سؤال.
 
 ### وضع العرض
 
@@ -112,7 +112,7 @@ npm run demo
 - لا يحل كل الأعطال، ولا ضمان لصحة الإجابات بنسبة 100%. راجع الخطوة قبل تنفيذها، ولا تشارك كلمة مرور أو رمز تحقق.
 - من 159 موضوعًا محفوظًا، 13 فقط بمصدر محدد ومعتمدة للاسترجاع: 11 من Microsoft Support، وواحد من MDN Web Docs، وواحد من دليل سلامة بطارية Dell. البقية، وعددها 146، موسومة «يحتاج مراجعة» لأنها بلا صفحة إجراء محددة، ولا تُرسل إلى النموذج ولا تُعرض كإرشاد معتمد.
 - النصوص ملخصات أصلية لإرشادات عامة، وليست إجراءات شركة بعينها. حقل استعادة حساب العمل عند المسؤول فارغ في الأصل.
-- إذا كان Ollama متوقفًا أو النموذج غير منزّل، يتعذر رد المساعد في المسارات التي تعتمد عليه. تبقى إمكانية إنشاء تذكرة.
+- إذا غاب مفتاح Groq وفشل OpenRouter، يتعذر رد المساعد في المسارات التي تعتمد على النموذج. تبقى إمكانية إنشاء تذكرة.
 - الاستماع الافتراضي محلي. هذه النسخة ليست خدمة مستضافة، ولا ترسل بريدًا أو إشعارًا خارج الجهاز.
 - لم يُختبر حد بعينه لعدد المستخدمين المتزامنين.
 
@@ -136,10 +136,10 @@ When mail, the network, or a work device fails, time goes into explaining the sa
 ### What it does
 
 - **Assistant:** an Arabic or English conversation about workplace IT faults. It does not ask for passwords or verification codes, and it does not repair the device itself.
-- **Retrieve, then generate:** the guide selects articles that match the product and the conversation, and sends short excerpts to the local model. Ranking is textual and contextual, not a vector database. If nothing matches, it does not invent a link or a setting.
+- **Retrieve, then generate:** the guide selects articles that match the product and the conversation, and sends short excerpts to the model. Ranking is textual and contextual, not a vector database. If nothing matches, it does not invent a link or a setting.
 - **Reviewed paths:** some common faults, including network, mail, sign-in, printing, and documented Teams, Excel, and OneDrive cases, follow written steps and do not wait for the model.
 - **Tickets:** an employee opens a request, a technician accepts it and records the fix, and the employee confirms or reopens it.
-- **Local runtime:** Node.js and SQLite on the machine. No API key, paid service, or outbound mail.
+- **Runtime:** Node.js and SQLite on the server. The assistant calls Groq, then OpenRouter if that request fails. It does not send mail.
 
 ### Permissions
 
@@ -159,16 +159,16 @@ An empty database shows a one-time screen to create the first administrator, who
 - No npm dependencies, so `npm install` is not required.
 - HTML, CSS, and JavaScript without a frontend framework.
 - A SQLite file created on first launch.
-- Ollama at `http://127.0.0.1:11434`, default model `llama3.1:8b`.
+- Groq with `openai/gpt-oss-120b`. If that request fails, OpenRouter is used with `meta-llama/llama-4-maverick`.
 
 ### Run it
 
-You need Node.js 24 or newer and [Ollama](https://ollama.com/) on a machine that can run the model. Pulling the model needs internet, disk space, and enough memory, and the model stays on your machine.
+You need Node.js 24 or newer, a server that stays running, and a Groq key. An OpenRouter key is the backup. Put the keys in `.env` and do not commit that file.
 
 ```powershell
 git clone https://github.com/MohammedMujib/atal-ai-support.git
 cd atal-ai-support
-ollama pull llama3.1:8b
+copy .env.example .env
 npm start
 ```
 
@@ -183,14 +183,14 @@ $env:PORT = "3003"
 npm start
 ```
 
-Optional variables are listed in `.env.example`. The application reads the process environment and does not load a `.env` file. Defaults are port `3002`, host `127.0.0.1`, and the Ollama URL and model above.
+Fill in `GROQ_API_KEY` in `.env` before starting. `start-local.mjs` and `demo-server.mjs` load that file. Defaults are port `3002` and host `127.0.0.1`.
 
 ```powershell
 npm run check
 npm test
 ```
 
-The tests cover conversation flow, permissions, retrieval, and the reply contract. A passing run does not prove that Llama answered every question correctly.
+The tests cover conversation flow, permissions, retrieval, and the reply contract. A passing run does not prove that the model answered every question correctly.
 
 ### Demo mode
 
@@ -223,7 +223,7 @@ The images above are from demo mode and use fictional data: the sign-in screen, 
 - It does not solve every fault, and answers are not guaranteed to be correct. Review a step before acting on it, and do not share a password or verification code.
 - Of 159 stored topics, 13 have a specific source and are eligible for retrieval: 11 from Microsoft Support, one from MDN Web Docs, and one from a Dell battery-safety guide. The other 146 are marked “needs review” because they do not cite a specific procedure page. They are not sent to the model and are not shown as approved guidance.
 - The text is an original summary of general public guidance, not one company’s procedure. The administrator’s work-account recovery field is empty by default.
-- If Ollama is stopped or the model is not pulled, assistant replies that depend on it are unavailable. Creating a ticket still works.
+- If the Groq key is missing and OpenRouter also fails, assistant replies that depend on the model are unavailable. Creating a ticket still works.
 - The default bind address is local. This version is not a hosted service, and it does not send mail or notifications off the machine.
 - No specific concurrent-user capacity has been tested.
 

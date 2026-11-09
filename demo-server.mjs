@@ -1,7 +1,9 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { loadEnv } from './load-env.mjs';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
+loadEnv(root);
 process.env.DEMO_MODE = '1';
 process.env.DATA_DIR = path.join(root, 'data', 'demo');
 process.env.HOST = process.env.HOST || '127.0.0.1';

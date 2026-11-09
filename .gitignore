@@ -6,7 +6,7 @@ data/
 *.sqlite
 *.sqlite3
 
-# Secrets. .env.example is documentation only; the app does not load it.
+# Secrets. start-local.mjs and demo-server.mjs load .env. .env.example has empty placeholders.
 .env
 .env.*
 !.env.example
