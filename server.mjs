@@ -787,4 +787,5 @@ const server = http.createServer(async (req, res) => {
   }
 });
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) server.listen(Number(process.env.PORT || 3000), process.env.HOST || '127.0.0.1', () => console.log(`ATAL ready: http://localhost:${process.env.PORT || 3000} — local Llama, no paid API`));
+export default server;
 export { server, db };
