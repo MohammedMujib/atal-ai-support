@@ -13,9 +13,9 @@
     "demo": "node demo-server.mjs",
     "demo:reset": "node demo-reset.mjs",
     "test": "node --test --test-isolation=process tests/*.test.mjs",
-    "check": "node --check server.mjs && node --check conversation-engine.mjs && node --check case-state.mjs && node --check core-guides.mjs && node --check chat.mjs && node --check llm.mjs && node --check load-env.mjs && node --check scope.mjs && node --check start-local.mjs && node --check knowledge.mjs && node --check knowledge-extra.mjs && node --check knowledge-en.mjs && node --check demo-data.mjs && node --check demo-server.mjs && node --check demo-reset.mjs && node --check public/i18n.js && node --check public/app.js && node --check reviewed-guides.mjs && node --check dialect.mjs && node --check workplace-guides.mjs"
+    "check": "node --check server.mjs && node --check api/handler.mjs && node --check conversation-engine.mjs && node --check case-state.mjs && node --check core-guides.mjs && node --check chat.mjs && node --check llm.mjs && node --check load-env.mjs && node --check scope.mjs && node --check start-local.mjs && node --check knowledge.mjs && node --check knowledge-extra.mjs && node --check knowledge-en.mjs && node --check demo-data.mjs && node --check demo-server.mjs && node --check demo-reset.mjs && node --check public/i18n.js && node --check public/app.js && node --check reviewed-guides.mjs && node --check dialect.mjs && node --check workplace-guides.mjs"
   },
   "engines": {
-    "node": ">=24"
+    "node": "24.x"
   }
 }
