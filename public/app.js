@@ -89,7 +89,7 @@ async function retint(change) {
   rememberFields();
   change();
   if (state.user) render();
-  else if (state.screen === 'login') auth(state.needsSetup);
+  else if (state.screen === 'login') auth(state.authMode);
   else if (state.screen === 'activate') await activateScreen(state.inviteToken);
   else home();
   recallFields();
@@ -141,17 +141,21 @@ function home() {
   const roles = [['users', 'cardEmployee', 'cardEmployeeBody'], ['tool', 'cardTech', 'cardTechBody'], ['shield', 'cardAdmin', 'cardAdminBody']];
   const steps = ['journey1', 'journey2', 'journey3'];
   const demo = state.demo ? `<section class="demoblock"><h2>${t('tryRoles')}</h2><p class="small muted">${t('demoCardsNote')}</p><div class="democards">${[['employee', 'demoEmployee', 'demoAs'], ['technician', 'demoTechnician', 'demoTechAs'], ['admin', 'demoAdmin', 'demoAdminAs']].map(([role, label, name]) => `<button type="button" data-demo="${role}"><b>${t(label)}</b><span>${esc(t(name))}</span></button>`).join('')}</div><p class="small muted" dir="ltr">${esc(t('demoPassword'))}: AtalDemo2026!</p></section>` : '';
-  $('#app').innerHTML = `${demoBanner()}<div class="home"><header class="homebar">${brand('full')}<div class="controls">${chrome()}<button class="btn" type="button" data-go="login">${t('signInCta')}</button></div></header><section class="hero"><h1>${t('authHero')}</h1><p>${t('homeLead')}</p><button class="btn" type="button" data-go="login">${t('signInCta')}</button></section><section class="cards">${roles.map(([glyph, title, body]) => `<article class="card"><div class="boticon">${icon(glyph)}</div><h2>${t(title)}</h2><p>${t(body)}</p></article>`).join('')}</section><h2 class="sectiontitle">${t('journeyTitle')}</h2><section class="journey">${steps.map((key, index) => `<article class="step"><span class="num">${num(index + 1)}</span><h3>${t(key)}</h3></article>`).join('')}</section>${demo}</div>`;
+  $('#app').innerHTML = `${demoBanner()}<div class="home"><header class="homebar">${brand('full')}<div class="controls">${chrome()}<button class="btn secondary" type="button" data-go="register">${t('createAccount')}</button><button class="btn" type="button" data-go="login">${t('signInCta')}</button></div></header><section class="hero"><h1>${t('authHero')}</h1><p>${t('homeLead')}</p><div class="actions"><button class="btn" type="button" data-go="login">${t('signInCta')}</button><button class="btn secondary" type="button" data-go="register">${t('createAccount')}</button></div></section><section class="cards">${roles.map(([glyph, title, body]) => `<article class="card"><div class="boticon">${icon(glyph)}</div><h2>${t(title)}</h2><p>${t(body)}</p></article>`).join('')}</section><h2 class="sectiontitle">${t('journeyTitle')}</h2><section class="journey">${steps.map((key, index) => `<article class="step"><span class="num">${num(index + 1)}</span><h3>${t(key)}</h3></article>`).join('')}</section>${demo}</div>`;
   bindChrome();
-  document.querySelectorAll('[data-go="login"]').forEach(button => button.onclick = () => auth(state.needsSetup));
+  document.querySelectorAll('[data-go="login"]').forEach(button => button.onclick = () => auth('login'));
+  document.querySelectorAll('[data-go="register"]').forEach(button => button.onclick = () => auth('register'));
   document.querySelectorAll('[data-demo]').forEach(button => button.onclick = async () => { button.disabled = true; try { await api('/api/demo-login', 'POST', { role: button.dataset.demo }); await boot(); } catch (error) { toast(error.message); button.disabled = false; } });
 }
-function auth(setup = false) {
+function auth(mode = 'login') {
   state.screen = 'login';
-  $('#app').innerHTML = `${demoBanner()}<div class="gate"><div class="gatecard"><div class="authbar">${brand('nav')}${chrome()}</div><h1>${setup ? t('setupTitle') : t('loginTitle')}</h1><p class="muted small">${setup ? t('setupHelp') : t('loginHelp')}</p><form id="authform">${setup ? `<label for="name">${t('name')}</label><input id="name" name="name" autocomplete="name" required maxlength="80"><label for="department">${t('department')}</label><input id="department" name="department" required maxlength="80" placeholder="${esc(t('departmentPh'))}">` : ''}<label for="email">${t('email')}</label><input id="email" name="email" type="email" autocomplete="username" dir="ltr" required maxlength="150" placeholder="you@company.com"><label for="password">${t('password')}</label><input id="password" name="password" type="password" autocomplete="${setup ? 'new-password' : 'current-password'}" minlength="10" maxlength="128" required placeholder="${esc(t('passwordPh'))}"><div id="autherror" class="formerror" role="alert"></div><button class="btn" type="submit">${setup ? t('createWorkspace') : t('signIn')}</button></form><p class="pagefoot">${t('localFoot')}</p><button class="btn ghost" type="button" data-go="home">${t('backHome')}</button></div></div>`;
+  state.authMode = mode === 'register' ? 'register' : 'login';
+  const register = state.authMode === 'register';
+  $('#app').innerHTML = `${demoBanner()}<div class="gate"><div class="gatecard"><div class="authbar">${brand('nav')}${chrome()}</div><h1>${register ? t('registerTitle') : t('loginTitle')}</h1><p class="muted small">${register ? t('registerHelp') : t('loginHelp')}</p><form id="authform">${register ? `<label for="name">${t('name')}</label><input id="name" name="name" autocomplete="name" required maxlength="80"><label for="department">${t('department')}</label><input id="department" name="department" required maxlength="80" placeholder="${esc(t('departmentPh'))}">` : ''}<label for="email">${t('email')}</label><input id="email" name="email" type="email" autocomplete="username" dir="ltr" required maxlength="150" placeholder="you@company.com"><label for="password">${t('password')}</label><input id="password" name="password" type="password" autocomplete="${register ? 'new-password' : 'current-password'}" minlength="10" maxlength="128" required placeholder="${esc(t('passwordPh'))}"><div id="autherror" class="formerror" role="alert"></div><button class="btn" type="submit">${register ? t('createAccount') : t('signIn')}</button></form><p class="pagefoot">${register ? t('haveAccount') : t('firstVisit')} <button class="btn ghost" type="button" data-switch>${register ? t('switchLogin') : t('switchRegister')}</button></p><button class="btn ghost" type="button" data-go="home">${t('backHome')}</button></div></div>`;
   bindChrome();
   document.querySelector('[data-go="home"]').onclick = () => home();
-  $('#authform').onsubmit = async event => { event.preventDefault(); const button = $('button[type=submit]', event.target); button.disabled = true; $('#autherror').textContent = ''; try { await api(setup ? '/api/setup' : '/api/login', 'POST', Object.fromEntries(new FormData(event.target))); history.replaceState(null, '', '/'); await boot(); } catch (error) { $('#autherror').textContent = error.message; button.disabled = false; } };
+  document.querySelector('[data-switch]').onclick = () => auth(register ? 'login' : 'register');
+  $('#authform').onsubmit = async event => { event.preventDefault(); const button = $('button[type=submit]', event.target); button.disabled = true; $('#autherror').textContent = ''; try { await api(register ? '/api/register' : '/api/login', 'POST', Object.fromEntries(new FormData(event.target))); history.replaceState(null, '', '/'); await boot(); } catch (error) { $('#autherror').textContent = error.message; button.disabled = false; } };
 }
 async function activateScreen(token) {
   state.screen = 'activate'; state.inviteToken = token;
@@ -180,7 +184,7 @@ async function boot() {
   try {
     const session = await api('/api/session');
     state.user = session.user; state.qa = session.qa; state.demo = session.demo; state.company = session.companyName || ''; state.needsSetup = session.needsSetup;
-    if (!state.user) { const invite = new URLSearchParams(location.search).get('invite'); if (invite) return activateScreen(invite); if (new URLSearchParams(location.search).get('login') === '1') return auth(session.needsSetup); return home(); }
+    if (!state.user) { const invite = new URLSearchParams(location.search).get('invite'); if (invite) return activateScreen(invite); const query = new URLSearchParams(location.search); if (query.get('register') === '1') return auth('register'); if (query.get('login') === '1') return auth('login'); return home(); }
     state.screen = 'app';
     if (!state.booted) { state.page = supportUser() ? 'desk' : 'support'; state.booted = true; }
     await refresh(); render();

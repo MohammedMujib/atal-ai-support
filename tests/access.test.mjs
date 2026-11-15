@@ -35,8 +35,11 @@ test('الدعوة مرة واحدة والتسجيل مغلق والعرض مع
     const kept = await request('/api/login', 'POST', { email: 'kept@example.test', password: 'strong-local-test', role: 'employee' });
     assert.equal(kept.status, 200);
     assert.equal((await request('/api/session', 'GET', null, kept.cookie)).json.user.role, 'admin');
-    assert.equal((await request('/api/register', 'POST', { name: 'عام', email: 'open@example.test', password: 'strong-local-test', department: 'عام' })).status, 403);
-    assert.equal(db.prepare('SELECT id FROM users WHERE email=?').get('open@example.test'), undefined);
+    const open = await request('/api/register', 'POST', { name: 'عام', email: 'open@example.test', password: 'strong-local-test', department: 'عام' });
+    assert.equal(open.status, 201);
+    assert.equal((await request('/api/session', 'GET', null, open.cookie)).json.user.role, 'employee');
+    assert.equal((await request('/api/register', 'POST', { name: 'ترقية', email: 'promote@example.test', password: 'strong-local-test', department: 'عام', role: 'admin' })).status, 400);
+    assert.equal(db.prepare('SELECT id FROM users WHERE email=?').get('promote@example.test'), undefined);
     assert.equal((await request('/api/demo-login', 'POST', { role: 'employee' })).status, 404);
     const created = await request('/api/users', 'POST', { name: 'موظف', email: 'person@example.test', department: 'المبيعات', role: 'employee', password: 'AdminChosen123' }, kept.cookie);
     assert.equal(created.status, 201);

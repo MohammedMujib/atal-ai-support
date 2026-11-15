@@ -32,7 +32,7 @@ The default listener is `127.0.0.1` only. Publishing this repository does not st
 | فني دعم | يرى طابور المكتب، يستلم التذكرة الجديدة، يضيف الرد والحل. لا يرى لوحة المؤشرات ولا يعدّل الدليل ولا يعيد الإسناد. |
 | مسؤول | يدير التذاكر والدليل والمستخدمين، ويرى مؤشرات محسوبة من السجلات، ويعيد الإسناد. |
 
-إذا كانت قاعدة البيانات فارغة تظهر مرة واحدة شاشة إنشاء أول مسؤول، ويختار هو كلمة المرور. لا توجد كلمة مرور إدارة ثابتة في التشغيل الأساسي. بعد ذلك يُغلق التسجيل العام، ويضيف المسؤول الحسابات بدعوة تُستخدم مرة واحدة.
+أي شخص ينشئ حسابًا من الصفحة الرئيسية ويدخل فورًا كموظف، بدون موافقة أو دعوة. حساب المسؤول ما زال يُنشأ مرة واحدة من قاعدة فارغة عبر إعداد المساحة، ويضيف الفنيين والمسؤولين بدعوة تُستخدم مرة واحدة. لا توجد كلمة مرور إدارة ثابتة.
 
 ### التقنيات
 
@@ -151,7 +151,7 @@ Authorization is enforced on the server. A person does not choose a role on the 
 | Technician | Sees the support queue, accepts a new ticket, and adds the reply and the solution. Does not see the dashboard, edit the guide, or reassign tickets. |
 | Administrator | Manages tickets, the guide, and users, sees figures calculated from records, and can reassign a ticket. |
 
-An empty database shows a one-time screen to create the first administrator, who chooses the password. Basic mode has no built-in administrator password. Public registration then closes, and the administrator adds accounts with a one-time invitation.
+Anyone can create an account from the home page and sign in immediately as an employee, without approval or an invitation. An administrator account is still created once from an empty database through workspace setup, and that account adds technicians and administrators with a one-time invitation. There is no built-in administrator password.
 
 ### Stack
 

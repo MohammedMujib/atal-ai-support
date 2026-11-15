@@ -30,7 +30,9 @@ test('صلاحيات الأدوار واستلام التذكرة والعزل �
     }
     const employee = await addUser({ name: 'موظف', email: 'employee@example.test', department: 'المبيعات', role: 'employee' });
     const other = await addUser({ name: 'آخر', email: 'other@example.test', department: 'المالية', role: 'employee' });
-    assert.equal((await request('/api/register', 'POST', { name: 'عام', email: 'open@example.test', password: 'strong-local-test', department: 'عام' })).status, 403);
+    const open = await request('/api/register', 'POST', { name: 'عام', email: 'open@example.test', password: 'strong-local-test', department: 'عام' });
+    assert.equal(open.status, 201);
+    assert.equal((await request('/api/session', 'GET', null, open.cookie)).json.user.role, 'employee');
     assert.equal((await request('/api/users', 'POST', { name: 'فني', email: 'tech@example.test', department: 'الدعم', role: 'technician' }, employee.cookie)).status, 403);
     const tech = await addUser({ name: 'فني', email: 'tech@example.test', department: 'الدعم', role: 'technician' });
     const tech2 = await addUser({ name: 'فني ثان', email: 'tech2@example.test', department: 'الدعم', role: 'technician' });

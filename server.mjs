@@ -569,7 +569,16 @@ async function api(req, res, url) {
     } catch (error) { try { db.exec('ROLLBACK'); } catch { /* already closed */ } throw error; }
     login(res, { id: row.user_id }); return send(res, 200, { ok: true, role: row.role });
   }
-  if (req.method === 'POST' && url.pathname === '/api/register') { rate(req); fail('registrationClosed', 403); }
+  if (req.method === 'POST' && url.pathname === '/api/register') {
+    rate(req); if (process.env.DEMO_MODE === '1') fail('registrationClosed', 403);
+    const payload = await body(req); if (payload.role != null) fail('roleLocked');
+    const email = str(payload.email, 150).toLowerCase(); if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fail('email');
+    const password = str(payload.password, 128); if (password.length < 10) fail('password');
+    if (db.prepare('SELECT id FROM users WHERE email=?').get(email)) fail('emailUsed', 409);
+    const salt = randomBytes(16).toString('hex');
+    const inserted = db.prepare('INSERT INTO users(name,email,password,salt,role,department,status) VALUES(?,?,?,?,?,?,?)').run(str(payload.name, 80), email, scryptSync(password, salt, 64).toString('hex'), salt, 'employee', str(payload.department || 'عام', 80), 'active');
+    login(res, { id: Number(inserted.lastInsertRowid) }); return send(res, 201, { ok: true, role: 'employee' });
+  }
   if (req.method === 'POST' && ['/api/setup', '/api/login'].includes(url.pathname)) {
     rate(req); const payload = await body(req); const email = str(payload.email, 150).toLowerCase(); if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fail('email'); const password = str(payload.password, 128); if (password.length < 10) fail('password');
     let account;

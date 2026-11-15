@@ -20,8 +20,11 @@ test('حفظ البيانات والصلاحيات والتحقق من رد ال
     assert.equal((await request('/api/setup','POST',{name:'ثان',email:'second@example.test',password:'strong-local-test',department:'دعم'})).status,409);
     const zero=(await request('/api/dashboard','GET',null,admin.cookie)).json;
     assert.equal(zero.total,0);assert.equal(zero.satisfaction,null);assert.equal(zero.selfResolved,0);
-    assert.equal((await request('/api/register','POST',{name:'موظف اختبار',email:'employee@example.test',password:'strong-local-test',department:'العمليات'})).status,403);
-    const invited=await request('/api/users','POST',{name:'موظف اختبار',email:'employee@example.test',department:'العمليات',role:'employee'},admin.cookie);
+    const signedUp=await request('/api/register','POST',{name:'موظف اختبار',email:'employee@example.test',password:'strong-local-test',department:'العمليات'});
+    assert.equal(signedUp.status,201);
+    assert.equal((await request('/api/session','GET',null,signedUp.cookie)).json.user.role,'employee');
+    assert.equal((await request('/api/register','POST',{name:'محاولة',email:'admin-try@example.test',password:'strong-local-test',department:'عام',role:'admin'})).status,400);
+    const invited=await request('/api/users','POST',{name:'موظف اختبار',email:'employee-invite@example.test',department:'العمليات',role:'employee'},admin.cookie);
     assert.equal(invited.status,201);
     const employee=await request('/api/activate','POST',{token:new URL(invited.json.invitePath,'http://localhost').searchParams.get('invite'),password:'strong-local-test'});
     assert.equal(employee.status,200);
@@ -129,7 +132,7 @@ test('حفظ البيانات والصلاحيات والتحقق من رد ال
     await request(`/api/tickets/${linked.id}/replies`,'POST',{body:'رد واحد'},employee.cookie);
     assert.equal(db.prepare('SELECT COUNT(*) AS c FROM ticket_replies WHERE ticket_id=? AND body=?').get(linked.id,'رد واحد').c,1);
     assert.equal(db.prepare('SELECT resolved_at FROM tickets WHERE id=?').get(linked.id).resolved_at,beforeResolved);
-    const employeeId=db.prepare("SELECT id FROM users WHERE email='employee@example.test'").get().id;
+    const employeeId=db.prepare("SELECT id FROM users WHERE email='employee-invite@example.test'").get().id;
     const openId=Number(db.prepare('INSERT INTO conversations(user_id,messages,analysis,created) VALUES(?,?,?,?)').run(employeeId,'[]',null,new Date().toISOString()).lastInsertRowid);
     assert.equal((await request(`/api/conversations/${openId}/end`,'POST',{},employee.cookie)).json.ended,true);
     const dash=(await request('/api/dashboard','GET',null,admin.cookie)).json;
