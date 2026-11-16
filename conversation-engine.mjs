@@ -1,8 +1,9 @@
 import {coreGuides} from './core-guides.mjs';
 import {emptyCase,restoreCase,updateCase,topicOf,foldCase,summarizeCase} from './case-state.mjs';
-import {routeRequest,isOutsideTopic,isExplanationFollowup,isInstructionFollowup,scopeRefusal,isTechnicalFault} from './scope.mjs';
+import {routeRequest,isOutsideTopic,isExplanationFollowup,isInstructionFollowup,isStepQuestion,scopeRefusal,isTechnicalFault} from './scope.mjs';
 import {generateReply,scopeGuard,redactSecrets} from './chat.mjs';
 import {shortAnswer} from './dialect.mjs';
+import {howtoKind,howTos,planHowto} from './howto.mjs';
 
 export function installCoreGuides(db){
  if(!db.prepare('PRAGMA table_info(articles)').all().some(c=>c.name==='support_json'))db.exec("ALTER TABLE articles ADD COLUMN support_json TEXT NOT NULL DEFAULT ''");
@@ -44,6 +45,9 @@ export function classifyTurn(message,history,state,language){
  if(/^(?:ابي|ابغي|ابغي|احتاج|اريد|ابغى|اطلب|طلب|i need|i want|request).*(?:فني(?:ه|ا)?|دعم(?: فني)?|technician|support)$/u.test(t))return {kind:'handover'};
  if((state.topic||state.problem)&&!/ما انحلت|لم تنحل|ما تم حل|لم يتم حل|not fixed|not solved/u.test(t)&&/(?:^| )و?(?:انحلت(?: المشكله)?|تم حل المشكله|تم الحل|ضبطت خلاص|it is fixed|it s fixed|problem solved)(?: |$)/u.test(t))return {kind:'resolved'};
  if((state.topic||state.problem)&&/^(?:(?:ايه|ايوه|اي|نعم|الحمد لله|الحمدلله) )?(?:ضبطت|اشتغل|اشتغلت|رجع يشتغل|رجعت تشتغل|نفع الحل)(?: خلاص| الان| الحين| شكرا| يعطيك العافيه)*$/u.test(t))return {kind:'resolved'};
+ const how=howtoKind(t);
+ if(how&&howTos[how]?.sensitive)return {kind:'handover',reply:en?howTos[how].en:howTos[how].ar};
+ if(how&&!(state.awaiting&&isStepQuestion(t)))return {kind:'support'};
  const relative=relativeKind(t);if(relative)return {kind:state.topic||state.problem?relative:'clarify'};
  if(isTechnicalFault(t))return {kind:'support'};
  const general=/^(?:هل )?(?:تعرف|من هو|من هي|من هم|منهم |كم لاعب|كم عدد|ما عاصمه|اين تقع|متي ولد|متي تاسس|who is|capital of)|مؤسس الشركه|رواتب|ارباح|salary|stock|population/u.test(t)&&!/تعرف.*(?:تحل|تصلح|المشكل|العطل)/u.test(t);
@@ -107,8 +111,19 @@ function chooseNode(state,guide){
   if(!f.error)return 'access.error';
   return 'handover';
  }
+ if(state.topic==='app'){if(!done('app.reopen'))return 'app.reopen';return 'handover';}
+ if(state.topic==='audio'){if(!done('audio.output'))return 'audio.output';return 'handover';}
+ if(state.topic==='display'){if(!done('display.power'))return 'display.power';return 'handover';}
+ if(state.topic==='input'){if(!done('input.replug'))return 'input.replug';return 'handover';}
+ if(state.topic==='teams_mic'){if(!done('teams.mic.mute'))return 'teams.mic.mute';return 'handover';}
+ if(state.topic==='heat'){if(f.heat_danger)return 'heat.stop';if(!done('heat.cool'))return 'heat.cool';return 'handover';}
+ if(state.topic==='frozen'){if(!done('frozen.close'))return 'frozen.close';return 'handover';}
+ if(state.topic==='device'){if(!done('device.what'))return 'device.what';return 'handover';}
  if(state.topic==='printer'){
+  if(f.printer_status==='jam'&&!done('printer.jam'))return 'printer.jam';
   if(f.printer_status==='jam')return 'handover';
+  if(f.print_quality&&!done('printer.quality'))return 'printer.quality';
+  if(f.print_quality)return 'handover';
   if(!done('printer.select'))return 'printer.select';
   if(!f.os)return 'printer.os';
   if(f.os==='windows')return 'printer.version';
@@ -117,19 +132,28 @@ function chooseNode(state,guide){
  }
  return null;
 }
-export function planGroundedTurn(state,kind,catalog,language='ar'){
+const glossary=[[/سلك|كابل/u,'السلك أو الكابل هو الوصلة التي تدخلها بيدك في الجهاز. لا تحتاج مفكًا ولا تفتح الغطاء.'],[/منفذ|يو اس بي|\busb\b/u,'المنفذ هو الفتحة الصغيرة على جانب الجهاز أو خلفه، وطرف السلك يدخل فيها.'],[/مرفق/u,'المرفق هو أي ملف تضيفه مع الرسالة، مثل صورة أو PDF. الرسالة بدون مرفق تعني كلامًا فقط.'],[/الصادر|outbox/u,'علبة الصادر قائمة داخل البريد للرسائل التي كتبتها ولم تصل بعد.'],[/اوتلوك|outlook/u,'Outlook هو برنامج البريد، وأيقونته غالبًا زرقاء. تفتحه من سطح المكتب أو بكتابة Outlook في بحث ويندوز.'],[/خرطوش|حبر|تونر/u,'الخرطوشة هي علبة الحبر داخل الطابعة. نقص لون واحد يجعل الورقة باهتة رغم أن الطابعة تعمل.'],[/درج الورق|انحشار/u,'درج الورق هو العلبة التي تسحبها من الطابعة وفيها الورق. لا تفتح غطاء الصيانة الداخلي.'],[/كتم|مكتوم|ميوت|mute/u,'الكتم يعني أن الصوت مقفل. الزر غالبًا رسمة سماعة وعليها خط.'],[/ميكروفون|مايك/u,'الميكروفون هو الذي ينقل صوتك للطرف الآخر، وهو غير السماعة التي تسمع منها.'],[/واي فاي|wifi/u,'الواي فاي اتصال الجهاز بالشبكة بلا سلك. أيقونته أقواس صغيرة بجانب الساعة.'],[/متصفح/u,'المتصفح هو البرنامج الذي تفتح به المواقع، مثل Edge أو Chrome.'],[/صفحه تجريبيه|اختبار الطباعه/u,'الصفحة التجريبية ورقة تطبعها الطابعة فيها ألوان، وليست ملف عمل.'],[/فتحات الهواء|تهويه/u,'فتحات الهواء شقوق صغيرة على جنب الجهاز. تطلع منها الحرارة، وإذا تسدّت بمخدة أو ورقة يسخن الجهاز.'],[/مروحه/u,'المروحة قطعة داخل الجهاز تبرده. صوتها أثناء الشغل الثقيل طبيعي، ولا نفتح الغطاء عشانها.']];
+function explainStep(message,node,language){
+ if(language==='en')return `${node.help.en}\n\nIf a word is still unclear, name it. If you did the step, tell me what you saw.`;
+ const asked=foldCase(message);
+ const lead=glossary.filter(([pattern])=>pattern.test(asked)).map(([,meaning])=>meaning).filter(meaning=>!node.help.ar.includes(meaning.slice(0,18))).join('\n');
+ return `${lead?lead+'\n\n':''}${node.help.ar}\n\nإذا بقيت كلمة غير واضحة اكتبها، وأشرحها. وإذا سويت الخطوة، قل لي وش ظهر لك.`;
+}
+export function planGroundedTurn(state,kind,catalog,language='ar',message=''){
  const found=lookupGuide(catalog,state.facts.http_status==='404'?'web404':state.topic);if(!found)return null;
  const {article,guide}=found,en=language==='en';
  if((kind==='why'||kind==='how')&&state.awaiting){
   const previous=guide.nodes.find(n=>n.id===state.awaiting.id);
-  if(previous)return {reply:(kind==='why'?previous.why:previous.help)[language],intent:kind==='why'?'clarify':previous.kind==='question'?'clarify':'guide',category:guide.category,sources:[article.id],origin:'knowledge_workflow',scope:'work_it',plan_node:state.awaiting};
+  if(previous)return {reply:kind==='why'?previous.why[language]:explainStep(message,previous,language),intent:kind==='why'?'clarify':previous.kind==='question'?'clarify':'guide',category:guide.category,sources:[article.id],origin:'knowledge_workflow',scope:'work_it',plan_node:state.awaiting};
  }
  const id=chooseNode(state,guide);
- if(id==='handover')return {reply:en?'We have reached the limit of the safe checks available for this case. You can request technical support below; review the summary of your symptoms and confirmed attempts before sending.':'وصلنا إلى حدود الفحوص الآمنة المتاحة لهذه الحالة. يمكنك طلب مساعدة فنية من الزر أدناه، ومراجعة ملخص المشكلة والمحاولات التي أكدت تنفيذها قبل الإرسال.',intent:'handover',category:guide.category,sources:[article.id],origin:'knowledge_workflow',scope:'work_it'};
+ if(id==='handover')return {reply:en?'I can stop here. If you want a technician to continue, open a support ticket below, review it, and send it yourself. I have not sent it.':'أقدر أوقف هنا. إذا تبي فني يكمّل، ارفع تذكرة دعم من الزر تحت، راجعها وأرسلها بنفسك. ما أرسلت التذكرة.',intent:'handover',category:guide.category,sources:[article.id],origin:'knowledge_workflow',scope:'work_it'};
  const node=guide.nodes.find(n=>n.id===id);if(!node)return null;
+ if(node.id==='heat.stop')return {reply:node.text[language],intent:'handover',category:guide.category,sources:[article.id],origin:'knowledge_safety',scope:'work_it',plan_node:{id:'heat.stop',slot:'heat_danger',kind:'action',success_resolves:false}};
  const previous=state.awaiting;
  // A different parameter answer must not count as having performed the pending action.
  if(previous?.id===node.id&&state.proposed.some(p=>p.id===node.id)){
+  if(isStepQuestion(message))return {reply:explainStep(message,node,language),intent:node.kind==='question'?'clarify':'guide',category:guide.category,sources:[article.id],origin:'knowledge_workflow',scope:'work_it',plan_node:previous};
   return {reply:en?'To continue, tell me the result of the last check. If you could not perform it, say which part was unclear and I will explain it.':'حتى نكمل، أخبرني بنتيجة الفحص السابق. وإذا لم تستطع تنفيذه، قل لي أي جزء لم يتضح وسأشرحه لك.',intent:'clarify',category:guide.category,sources:[article.id],origin:'knowledge_workflow',scope:'work_it',plan_node:previous};
  }
  state.awaiting={id:node.id,slot:node.slot,kind:node.kind,article_id:article.id,success_resolves:!!node.success_resolves};
@@ -148,7 +172,7 @@ export async function answerEmployee({message,history=[],catalog=[],rawState,lan
  const batteryDanger=/بطاري|battery/u.test(foldCase(message))&&/منتفخ|انتفاخ|swollen|swelling/u.test(foldCase(message));
  if(route.kind==='support'&&batteryDanger&&safetyArticle)reply={reply:language==='en'?safetyArticle.body_en:safetyArticle.body,intent:'handover',category:'hardware',sources:[safetyArticle.id],origin:'knowledge_safety',scope:'work_it'};
  else if(route.kind==='social')reply={reply:route.reply,intent:'social',category:'other',sources:[],origin:'scope_policy',scope:'social'};
- else if(route.kind==='handover')reply={reply:language==='en'?'Use “Request technical help” below. Review the problem and your reported attempts before submitting; no ticket has been sent yet.':'يمكنك استخدام زر «طلب مساعدة فنية» أدناه. راجع وصف المشكلة والمحاولات التي ذكرتها قبل الإرسال؛ لم تُرسل تذكرة بعد.',intent:'handover',category:coreGuides[state.topic]?.category||'other',sources:[],origin:'support_handover',scope:'work_it'};
+ else if(route.kind==='handover')reply={reply:route.reply||(language==='en'?'Use “Request technical help” below. Review the problem and your reported attempts before submitting; no ticket has been sent yet.':'يمكنك استخدام زر «طلب مساعدة فنية» أدناه. راجع وصف المشكلة والمحاولات التي ذكرتها قبل الإرسال؛ لم تُرسل تذكرة بعد.'),intent:'handover',category:coreGuides[state.topic]?.category||'other',sources:[],origin:route.reply?'sensitive_handover':'support_handover',scope:'work_it'};
  else if(route.kind==='resolved')reply={reply:language==='en'?'Glad the problem is resolved. You can end this conversation, or start a new one for another work IT problem.':'الحمد لله أن المشكلة انحلّت. يمكنك إنهاء المحادثة، أو بدء محادثة جديدة إذا واجهتك مشكلة تقنية أخرى.',intent:'resolved',category:coreGuides[state.topic]?.category||'other',sources:[],origin:'scope_policy',scope:'work_it'};
  else if(route.kind==='outside')reply={reply:route.reply||(language==='en'?'I only help diagnose and resolve technical faults at work.':scopeRefusal),intent:'out_of_scope',category:'other',sources:[],origin:'scope_policy',scope:'outside'};
  else if(route.kind==='answer_clarification'){
@@ -157,7 +181,8 @@ export async function answerEmployee({message,history=[],catalog=[],rawState,lan
  }
  else if(route.kind==='clarify')reply={reply:state.topic?(language==='en'?'Do you mean the last step was unclear, or did you try it and the problem remains?':'هل تقصد أن الخطوة السابقة غير واضحة، أم أنك جرّبتها وما زالت المشكلة؟'):(language==='en'?'Describe the work IT problem: what is not working, and what happens when you try?':'صف لي المشكلة التقنية: ما الذي لا يعمل، وماذا يظهر لك عند المحاولة؟'),intent:'clarify',category:coreGuides[state.topic]?.category||'other',sources:[],origin:'context_clarification',scope:'work_it'};
  else {
-  reply=planGroundedTurn(state,route.kind,catalog,language);
+  reply=planHowto(state,language)||planGroundedTurn(state,route.kind,catalog,language,message);
+  if(!reply && state.turn>=3) reply={reply:language==='en'?'The problem is still open. The next step is to open a technical support ticket. I have not sent it; review it and submit it yourself.':'ما زالت المشكلة قائمة. الخطوة التالية هي رفع تذكرة دعم فني. لم أرسل التذكرة؛ راجعها وأرسلها بنفسك.',intent:'handover',category:coreGuides[state.topic]?.category||'other',sources:[],origin:'turn_limit',scope:'work_it'};
   if(!reply){
    const refs=retrieve(catalog,message,history,state);
    reply=await generateReply(message,history,refs,{signal,skipRouting:true,language,caseState:state});

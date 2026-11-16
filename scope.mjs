@@ -28,8 +28,13 @@ export function isInstructionFollowup(message){
   ||/^(?:اشرح|وضح|بسط)(?: (?:لي|هذي|هذه|الخطوه|الخطوات|اكثر|ببساطه))*$/u.test(t)
   ||/^(?:ممكن|تقدر) (?:تشرح|توضح)(?: (?:لي|الخطوه|الخطوات|اكثر|ببساطه))*$/u.test(t)
   ||/^كيف (?:اسوي|اجرب|افحص|افتح|استخدم|اطبق|اكتب|اوصل)(?: (?:هذا|ذلك|هذي|الخطوه|الخطوات|الموقع|البريد|المتصفح))*$/u.test(t)
-  ||/^(?:what should i do|i don t understand|how do i do that|explain that|explain the step)$/u.test(t);
+  ||/^(?:what should i do|i don t understand|how do i do that|explain that|explain the step|what is that|what do you mean)$/u.test(t)
+  ||/^(?:كيفاش|ازاي|شلون|كيف)(?:\s+(?:كذا|اسوي|اسويها|اعملها|الطريقه|الخطوه|هذا|هذي|ذي|هالخطوه))?\s*$/u.test(t)
+  ||(t.length<=110&&/^(?:شنو|ماذا|ما ?هو|ما ?هي|ماهو|ماهي|ما هذا|ما هذه|ماهذا|وش هذا|ايش هذا|ايش ذا|وش ذا|وش|ايش)(?:\s|$)/u.test(t))
+  ||(t.length<=110&&/(?:تقصد|وش يعني|ايش يعني|يعني ايش|ما معنى|ما المقصود|لم افهم|ما وضحت)/u.test(t))
+  ||/^(?:وين|فين|اين|من وين)(?:\s|$)/u.test(t);
 }
+export function isStepQuestion(message){return isInstructionFollowup(message);}
 export function routeRequest(message,history=[]){
  const t=normalize(message).replace(/(^|\s)لا(?=يعمل|تعمل|يفتح|تفتح|يرسل|تطبع)/gu,'$1لا '),en=!/[\u0600-\u06ff]/u.test(message);
  const active=activeTechnicalContext(history);
@@ -48,6 +53,7 @@ export function routeRequest(message,history=[]){
  if(/^(?:كيف حالك|كيف الحال|كيفك|شلونك|وش اخبارك|كيف امورك|how are you)(?: اليوم)?$/u.test(t))return small(en?'I’m here and ready to help, thank you for asking. How are you?':'الحمد لله، بخير. شكرًا لسؤالك، كيف حالك أنت؟');
  if(/^(?:شكرا|شكرا لك|شكرا علي (?:الاجابه|المساعده)|اشكرك|مشكور|تسلم|يعطيك العافيه|thanks|thank you)(?: جزيلا)?$/u.test(t))return small(en?'You’re welcome. If the problem remains, tell me what happened and we can continue.':'العفو، يسعدني مساعدتك. إذا بقيت المشكلة، أخبرني بما حدث لنكمل.');
  if(/^(?:الحمد لله|الحمدلله|بخير|تمام|كويس|بخير الحمد لله|الحمد لله بخير|الحمدلله بخير|انا بخير|fine|good|i m fine)$/u.test(t)&&!(active&&/^(?:تمام|fine|good)$/u.test(t)))return small(en?'Glad to hear that. Is there a technical fault at work I can help you with?':'الحمد لله. هل تواجه مشكلة تقنية في العمل أستطيع مساعدتك بها؟');
+ if(/^(?:(?:طيب|ياخي|يا اخي|يا رجال|يا رجل)\s+)?اسمع(?:ني)?$/u.test(t))return small(en?'I’m listening. Which work device or system is giving you trouble?':'أسمعك، تفضل. وش الجهاز أو النظام اللي فيه المشكلة؟','social','work_it');
  if(outside.test(t))return refuse();
  if(/شخصي|للترفيه|للتسليه|personal|entertainment/u.test(t)&&!/للعمل عن بعد|work from home/u.test(t))return refuse();
  if(/^(?:عندي مشكله|عندي عطل|احتاج مساعده|ساعدني|عندي سؤال|عندي استفسار|i need help|i have a problem)$/u.test(t))return small(en?'I’m here to help. What technical problem are you experiencing at work?':'أنا هنا لمساعدتك. ما المشكلة التقنية التي تواجهها في العمل؟','clarify','work_it');

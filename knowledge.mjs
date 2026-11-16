@@ -1,6 +1,7 @@
 // General, authored IT guidance. These are not any company's approved policies.
 import {english} from './knowledge-en.mjs';
 import {extraKnowledge} from './knowledge-extra.mjs';
+import {normalizeDialect} from './dialect.mjs';
 const coreKnowledge = [
  ['إرسال البريد والمرفقات','email','ايميل إيميل بريد outlook اوتلوك يرسل ارسال مرفق مرفقات','تحقق هل الإرسال لا يعمل لكل الرسائل أم رسالة واحدة. جرّب رسالة قصيرة دون مرفق إلى مستلم معروف. راجع صندوق الصادر ورسالة الخطأ. إن كان المرفق كبيرًا استخدم وسيلة مشاركة الملفات المعتمدة، مع صلاحيات مناسبة. يمكن تجربة بريد الويب الرسمي. لا تحذف رسائل مهمة أو تغيّر إعدادات الخادم. صعّد إذا استمر الخطأ.'],
  ['البريد لا يستقبل أو الرسائل مفقودة','email','بريد ايميل يستقبل استقبال رسائل مفقودة spam junk inbox الوارد','ابحث باسم المرسل أو عنوان الرسالة، وافحص البريد غير الهام والأرشيف والقواعد من الواجهة المعتمدة. تحقق من مساحة صندوق البريد ورسالة التنبيه. اطلب من المرسل تأكيد عنوانك. لا تعطل فلاتر الحماية ولا تحذف رسائل لتفريغ المساحة دون مراجعتها. إذا اختفت رسائل كثيرة أو تغيّرت قواعد البريد دون علمك بلّغ الدعم.'],
@@ -127,7 +128,7 @@ function contextClash(article, latest) {
  const checks = [[/android|اندرويد/, /android|اندرويد/], [/ios|iphone|ايفون/, /ios|iphone|ايفون/], [/macos|\bmac\b|ماك/, /macos|\bmac\b|ماك/], [/windows|ويندوز/, /windows|ويندوز/], [/\bvpn\b/, /\bvpn\b/]];
  return checks.some(([marker, said]) => mentions(stated, marker) && !mentions(asked, said));
 }
-function terms(text){return [...new Set(normalize(text).split(' ').map(t=>t.startsWith('ال')&&t.length>4?t.slice(2):t).filter(t=>t.length>1&&!stop.has(t)))];}
+function terms(text){return [...new Set(normalizeDialect(text).split(' ').map(t=>t.startsWith('ال')&&t.length>4?t.slice(2):t).filter(t=>t.length>1&&!stop.has(t)))];}
 function osClash(article, latest){
  const blob=normalize(`${article.os||article.os_name||''} ${article.keywords||''} ${article.title||''} ${article.title_en||''}`);
  const win=latest.some(t=>['windows','ويندوز','وندوز'].includes(t));
@@ -153,7 +154,7 @@ export function situationTitles(articles, message, language = 'ar') {
 export function selectArticles(articles,message,history=[],limit=4){
  const latest=terms(message);const earlier=terms(history.filter(m=>m.role==='user').map(m=>m.content).join(' '));
  const askedText=`${message} ${history.filter(m=>m.role==='user').map(m=>m.content).join(' ')}`;
- const failure=/يشتغل|مايفتح|لا يفتح|لا يعمل|ما يعمل|يتصل|مقطوع|بطيء|واقف|offline/.test(normalize(message));
+ const failure=/يشتغل|مايفتح|لا يفتح|لا يعمل|ما يعمل|يتصل|مقطوع|بطيء|واقف|offline/.test(normalizeDialect(message));
  const ranked=articles.filter(a=>a.review_status!=='needs_review').map(a=>{
   if(osClash(a,latest)||contextClash(a,latest)||productClash(a,askedText,message)||symptomClash(a,askedText))return {a,score:0,specific:false};
   const title=terms(`${a.title||''} ${a.title_en||''}`),tags=terms(`${a.keywords||''} ${a.keywords_en||''}`),body=terms(`${a.body||''} ${a.body_en||''}`);
@@ -175,8 +176,8 @@ export function selectArticles(articles,message,history=[],limit=4){
  const result=matches.map(({a})=>a);
  const previous=[...history].reverse().find(m=>m.role==='assistant'&&m.analysis?.sources?.length)?.analysis.sources[0];
  const previousArticle=articles.find(a=>a.id===previous&&a.review_status!=='needs_review');
- const shortReply=/^(نعم|لا|اي|صح|تمام|yes|no|ايوه)( صح| تمام| بعد)?$/.test(normalize(message));
- const followUp=shortReply||/جرب|محاول|انحل|مستمر|التالي|فهم|اشرح|وضح|ابسط|اقصد|tried|still|remain|next|explain|simpler|actually/.test(normalize(message));
+ const shortReply=/^(نعم|لا|اي|اه|صح|تمام|ماشي|yes|no|ايوه)( صح| تمام| بعد)?$/.test(normalizeDialect(message));
+ const followUp=shortReply||/جرب|محاول|انحل|مستمر|التالي|فهم|اشرح|وضح|ابسط|اقصد|tried|still|remain|next|explain|simpler|actually/.test(normalizeDialect(message));
  const strongShift=!followUp&&!!matches[0]&&matches[0].score>=21&&!!previousArticle&&!terms(`${previousArticle.title} ${previousArticle.keywords} ${previousArticle.title_en||''}`).some(t=>latest.includes(t)&&!generic.has(t));
  if(followUp&&previousArticle){
   const changed=/اقصد|الصحيح|مو كذا|ليس كذلك|meant|actually/.test(normalize(message));

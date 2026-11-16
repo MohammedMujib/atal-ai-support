@@ -1,15 +1,24 @@
 import {normalizeDialect,shortAnswer} from './dialect.mjs';
+import {howtoKind} from './howto.mjs';
 export const foldCase=normalizeDialect;
 const failure=/مو شغال|مب شغال|للحين|ما زال|مازال|باقي|بعده|ما نفع|ما نفعت|ما ضبط|لم ينجح|لم تنجح|ما انحلت|لم تنحل|لا يعمل|لا تعمل|ما يعمل|ما تفتح|لم تعمل|مستمر|still|did not work|didn t work|not working/u;
 export function topicOf(text){
  const t=foldCase(text);
  if(/teams|تيمز/u.test(t)&&/كاميرا|كميرا|camera|webcam/u.test(t))return 'teams_camera';
+ if(/مايك|ميكروفون|microphone|\bmic\b|ما يسمعون/u.test(t))return 'teams_mic';
  if(/onedrive|ون ?درايف/u.test(t)&&/مزامن|sync|paused/u.test(t))return 'onedrive_sync';
  if(/excel|اكسل|اكسيل/u.test(t)&&/قراءه|read only|مقفل|قفل|locked|تحرير/u.test(t))return 'excel_lock';
  if(/حساب|account|نسيت.*(?:مرور|باسورد)|password|تسجيل الدخول|sign in/u.test(t))return 'access';
  if(/ايميل|اميل|بريد|اوتلوك|outlook|e ?mail|ارسال الرسال|يرسل الرسال/u.test(t))return 'email';
  if(/طابع|طباع|printer|print job/u.test(t))return 'printer';
  if(/شبك|انترنت|واي فاي|وايفاي|wifi|wi fi|network|internet|(?:^|\s)(?:نت|النت)(?:\s|$)/u.test(t))return 'network';
+ if(/حرار|سخون|يسخن|سخن|ساخن|يحمى|حامي|overheat|too hot|المروحه/u.test(t))return 'heat';
+ if(/نظام/u.test(t)&&/لا يعمل|ما يشتغل|ما يفتح|يعلق|واقف|خربان/u.test(t)&&!/طابع|بريد|انترنت|شبك|حساب/u.test(t))return 'app';
+ if(/كيبورد|لوحه المفاتيح|keyboard|ماوس|فاره|mouse/u.test(t))return 'input';
+ if(/شاشه سود|blank screen|الشاشه ما|ما تعرض/u.test(t)||/جهاز/u.test(t)&&/لا يعمل|ما يشتغل|طفا|مطف/u.test(t)&&!/طابع|انترنت|شبك|برنامج|تطبيق/u.test(t))return 'display';
+ if(/صوت|سماعه|سبيكر|ما اسمع|headset|speaker|audio/u.test(t))return 'audio';
+ if(/لا يستجيب|ما يستجيب|مو مستجيب|مش مستجيب|not responding/u.test(t))return 'frozen';
+ if(/جهاز/u.test(t)&&/مشكل|عطل|خلل/u.test(t))return 'device';
  return null;
 }
 export function emptyCase(){return {version:2,topic:null,problem:'',facts:{},evidence:{},hypotheses:[],attempts:{},proposed:[],answered:[],awaiting:null,turn:0,sources:[]};}
@@ -21,10 +30,20 @@ export function updateCase(previous,message){
  const t=foldCase(message);let pending=state.awaiting;
  const found=topicOf(t);
  if(!state.topic&&found){state.topic=found;state.problem=message.slice(0,300);}
+ const how=howtoKind(t);
+ const asksHow=/^(?:كيف|شلون|ابي|ابغى|ابغي|اريد)/u.test(t);
+ if(how&&how!=='general'&&state.facts.howto_kind!==how&&(!state.topic||state.topic==='howto'||asksHow)){
+  const os=state.facts.os;Object.assign(state,{...emptyCase(),topic:'howto',problem:message.slice(0,300),turn:state.turn,facts:os?{os}:{}});
+  setFact(state,'howto_kind',how,message);pending=null;
+ }
+ if(how==='general'&&state.facts.howto_kind!=='general'&&(!state.topic||state.topic==='howto')){
+  const os=state.facts.os;Object.assign(state,{...emptyCase(),topic:'howto',problem:message.slice(0,300),turn:state.turn,facts:os?{os}:{}});
+  setFact(state,'howto_kind',how,message);pending=null;
+ }
  // An explicitly described fault in a different service starts a new case. A short
  // answer naming the internet in an email diagnosis does not switch the case.
- const newFault=/مشكل|عطل|خلل|لا يعمل|لا تعمل|ما يشتغل|ما يفتح|ما تفتح|ما يدخل|نسيت|not work|cannot|can t|forgot|fails/u.test(t);
- if(found&&found!==state.topic&&(/اقصد|الصحيح|مشكله جديده|actually|new problem/u.test(t)||newFault&&found!=='network')){const old={topic:state.topic,problem:state.problem,facts:state.facts,attempts:state.attempts};Object.assign(state,{...emptyCase(),topic:found,problem:message.slice(0,300),turn:state.turn,previous_cases:[...(state.previous_cases||[]),old]});pending=null;}
+ const newFault=/مشكل|عطل|خلل|لا يعمل|لا تعمل|ما يشتغل|ما يفتح|ما تفتح|ما يدخل|يستجيب|نسيت|not work|cannot|can t|forgot|fails/u.test(t);
+ if(found&&found!==state.topic&&(state.topic==='device'||/اقصد|الصحيح|مشكله جديده|actually|new problem/u.test(t)||newFault&&found!=='network')){const old={topic:state.topic,problem:state.problem,facts:state.facts,attempts:state.attempts};Object.assign(state,{...emptyCase(),topic:found,problem:message.slice(0,300),turn:state.turn,previous_cases:[...(state.previous_cases||[]),old]});pending=null;}
  if(!state.problem&&/مشكل|عطل|خلل|error|problem/u.test(t))state.problem=message.slice(0,300);
  const win=t.match(/(?:ويندوز|ويندز|windows)\s*(10|11)?/u);
  if(win)setFact(state,'os',win[1]?'windows'+win[1]:'windows',message);
@@ -62,12 +81,14 @@ export function updateCase(previous,message){
  if(/(?:^|\D)404(?:\D|$)/u.test(t)){setFact(state,'http_status','404',message);setFact(state,'error',message.trim(),message);}
  if(/working offline|العمل دون اتصال/u.test(t))setFact(state,'mail_status','offline',message);
  else if(state.topic==='email'&&/متصل|connected/u.test(t))setFact(state,'mail_status','connected',message);
+ if(state.topic==='heat'&&/دخان|يحترق|منتفخ|انتفاخ|swollen|رائحه احتراق|burning smell|smoke/u.test(t))setFact(state,'heat_danger',true,message);
+ if(state.topic==='printer'&&/الوان|حبر|خرطوش|تونر|باهت|بقع|color|faded|streak|toner|cartridge/u.test(t))setFact(state,'print_quality','unclear',message);
  if(state.topic==='printer'&&/انحشار|ورق عالق|paper jam/u.test(t))setFact(state,'printer_status','jam',message);
  else if(state.topic==='printer'&&/offline|غير متصل/u.test(t))setFact(state,'printer_status','offline',message);
  if(/جربت|حاولت|tried/u.test(t)&&/قصير|بدون مرفق|دون مرفق|short.*mail/u.test(t)&&failure.test(t))state.attempts['email.small']={result:'failed',user_text:message,turn:state.turn};
  if(pending){
   const relative=/اتبعت|جربت|جربتها|سويت|نفذت|ما نفع|ما ضبط|لا يعمل|لا تعمل|ما يشتغل|ما اشتغل|مازالت|ما زالت|لم تنحل|still|tried|didn t|did not/u.test(t)||yes(t)||no(t);
-  const explain=/ليش|ليه|لماذا|ما ?فهمت|اشرح|وضح|وش اسوي|كيف|why|explain|understand/u.test(t);
+  const explain=/ليش|ليه|لماذا|ما ?فهمت|اشرح|وضح|وش اسوي|كيف|شلون|ازاي|ماهو|ما هو|ما هي|ماذا|تقصد|يعني|وين |why|explain|understand|what is|what do you mean/u.test(t);
   if(!explain&&pending.kind==='question'&&pending.id.startsWith('model.')){state.answers||={};state.answers[pending.id]={question:state.proposed.find(p=>p.id===pending.id)?.text||'',answer:message.slice(0,500),turn:state.turn};}
   if(!explain&&relative){
    if(pending.slot==='reachability'&&!state.evidence.reachability?.user_text?.includes(message)){
